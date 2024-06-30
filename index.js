@@ -1,13 +1,14 @@
 // ==UserScript==
 // @name         阿里云盘树状目录
-// @version      0.2
-// @description  阿里云盘分享页显示树状列表，点击logo旁边笑脸即可，加载略慢，耐心等待
+// @version      1.0
+// @description  阿里云盘分享页显示树状列表，点击logo旁边笑脸即可
 // @author       sunzehui
 // @license      MIT
-// @match        https://www.aliyundrive.com/s/*
+// @match        https://www.alipan.com/s/*
 // @grant        GM_xmlhttpRequest
 // @require       https://cdn.bootcdn.net/ajax/libs/jquery/3.6.0/jquery.js
 // @require https://cdn.bootcdn.net/ajax/libs/jquery.fancytree/2.38.1/jquery.fancytree-all-deps.js
+// @namespace https://greasyfork.org/users/454712
 // ==/UserScript==
 const lazyLoad = true;
 // 全局token
@@ -21,10 +22,10 @@ const parseCookie = (str) =>
       acc[decodeURIComponent(v[0].trim())] = decodeURIComponent(v[1].trim());
       return acc;
     }, {});
-
+ 
 const device_id = parseCookie(document.cookie)["cna"];
 const share_id = getShareId();
-
+ 
 let headers = {
   accept: "application/json, text/plain, */*",
   "accept-language": "zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6",
@@ -35,14 +36,14 @@ let headers = {
   "x-device-id": device_id,
   "x-share-token": token,
 };
-
+ 
 (function () {
   var listeners = [];
   var doc = window.document;
   varMutationObserver =
     window.MutationObserver || window.WebKitMutationObserver;
   var observer;
-
+ 
   function domReady(selector, fn) {
     // 储存选择器和回调函数
     listeners.push({
@@ -60,7 +61,7 @@ let headers = {
     // 检查该节点是否已经在DOM中
     check();
   }
-
+ 
   function check() {
     // 检查是否匹配已储存的节点
     for (var i = 0; i < listeners.length; i++) {
@@ -78,7 +79,7 @@ let headers = {
       }
     }
   }
-
+ 
   // 对外暴露ready
   window.domReady = domReady;
 })();
@@ -125,15 +126,16 @@ function renderTag() {
       tag.innerHTML = "&#128515;";
     }, 1000);
   };
-  domReady("div.banner--3rtM_.banner--sfaVZ", function () {
+  domReady('div.banner--7Ux0y',function(){
     document
       .querySelector(
-        "#root > div > div.page--3indT > div.banner--3rtM_.banner--sfaVZ"
+        "#root > div > div.page--W3d1U > .banner--7Ux0y"
       )
       .appendChild(tag);
-  });
+  })
+ 
 }
-
+ 
 function listAdapter(list, isFirst = true) {
   return list.map((item) => {
     const hasFolder = !!item.children;
@@ -180,7 +182,7 @@ async function buildFancytreeCfg() {
       children: children.flat(1),
     }));
   };
-
+ 
   const loadNode = function (event, data) {
     data.result = getList({ parent_file_id: data.node.key }).then((list) => {
       return list.items.map((item) => ({
@@ -200,7 +202,7 @@ async function buildFancytreeCfg() {
   }
   return cfg;
 }
-
+ 
 // 显示侧边栏
 async function renderView() {
   const treeContainer = document.createElement("div");
@@ -210,8 +212,10 @@ async function renderView() {
   treeContainer.style = `
   height: 100%;
   background: #ecf0f1;
-      position: absolute;
-      top: 0;`;
+      position: fixed;
+      top: 60px;
+      z-index: 9999;
+overflow-y:scroll`;
   const bar = document.createElement("div");
   bar.style = "background: #bdc3c7;";
   const button = document.createElement("button");
@@ -225,12 +229,11 @@ async function renderView() {
   bar.appendChild(button);
   treeContainer.appendChild(bar);
   treeContainer.appendChild(tree);
-
-  domReady("div.content--cklK-", function () {
+  domReady("div.content--t4XI8", function () {
     document
-      .querySelector("#root > div > div.page--3indT > div.content--cklK-")
+      .querySelector("#root > div > div.page--W3d1U")
       .appendChild(treeContainer);
-    $(".content--cklK-").css("position", "relative");
+    $(".page--W3d1U").css("position", "relative");
   });
 }
 // 获取文件列表
@@ -258,7 +261,7 @@ async function getList({ parent_file_id }) {
   );
   return await result.json();
 }
-
+ 
 async function buildTree(parent_file_id) {
   const treeNode = {};
   const root = await getList({ parent_file_id });
@@ -276,6 +279,7 @@ async function buildTree(parent_file_id) {
   return treeNode;
 }
 $(async function () {
+ 
   renderTag();
   const cssElem = document.createElement("link");
   cssElem.setAttribute("rel", "stylesheet");
@@ -286,7 +290,7 @@ $(async function () {
   document.body.appendChild(cssElem);
   const cssElem2 = document.createElement("style");
   cssElem2.innerHTML = `
-  .sunzehuiBtn{   
+  .sunzehuiBtn{
     display: inline-block;
     font-weight: 400;
     text-align: center;
@@ -303,7 +307,7 @@ $(async function () {
     border-color: #6c757d;
     margin: 8px auto;
     cursor: pointer;
-  } 
+  }
   .sunzehuiBtn:hover{
      text-decoration: none;
      background-color: #5a6268;
