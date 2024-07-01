@@ -1,15 +1,15 @@
 // ==UserScript==
-// @name         夸克网盘树状目录
+// @name         阿里云盘树状目录
 // @version      1.0
-// @description  夸克网盘分享页显示树状列表，点击logo旁边笑脸即可
+// @description  阿里云盘分享页显示树状列表，点击logo旁边笑脸即可
 // @author       sunzehui
 // @license      MIT
-// @match        https://pan.quark.cn/s/*
+// @match        https://www.alipan.com/s/*
 // @grant        GM_xmlhttpRequest
 // @require       https://cdn.bootcdn.net/ajax/libs/jquery/3.6.0/jquery.js
-// @require       https://cdn.bootcdn.net/ajax/libs/jquery.fancytree/2.38.1/jquery.fancytree-all-deps.js
+// @require https://cdn.bootcdn.net/ajax/libs/jquery.fancytree/2.38.1/jquery.fancytree-all-deps.js
+// @namespace https://greasyfork.org/users/454712
 // ==/UserScript==
-
 ;(function() {
   var listeners = []
   var doc = window.document
@@ -55,11 +55,21 @@
   // 对外暴露ready
   window.domReady = domReady
 })()
-
-class QuarkPanTree {
+class AliPanTree {
   constructor() {
-    this.api = {
-      fileList: 'https://drive-pc.quark.cn/1/clouddrive/share/sharepage/detail',
+    this.tokenStorage = JSON.parse(localStorage.getItem('shareToken'))
+    this.token = this.tokenStorage.share_token ? this.tokenStorage.share_token : ''
+    this.device_id = this.parseCookie(document.cookie)['cna']
+    this.share_id = this.getShareId()
+    this.headers = {
+      accept: 'application/json, text/plain, */*',
+      'accept-language': 'zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6',
+      'content-type': 'application/json;charset=UTF-8',
+      'sec-fetch-mode': 'cors',
+      'sec-fetch-site': 'same-site',
+      'x-canary': 'client=web,app=adrive,version=v2.3.1',
+      'x-device-id': this.device_id,
+      'x-share-token': this.token,
     }
     this.config = {
       insertContainer: 'div.CommonHeader--container--LPZpeBK',
@@ -68,36 +78,24 @@ class QuarkPanTree {
       lazyLoad: true,
       fancytreeCSS_CDN: 'https://cdnjs.cloudflare.com/ajax/libs/jquery.fancytree/2.27.0/skin-win8/ui.fancytree.css',
     }
-    this.headers = {
-      accept: 'application/json, text/plain, */*',
-      'accept-language': 'zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6',
-      'content-type': 'application/json;charset=UTF-8',
-      'sec-fetch-mode': 'cors',
-      'sec-fetch-site': 'same-site',
-      'x-canary': 'client=web,app=adrive,version=v2.3.1',
+    this.api = {
+      fileList: 'https://api.aliyundrive.com/adrive/v3/file/list',
     }
-    this.params = {
-      pwd_id: this.getPwdId(),
-    }
-    this.nowSelectNode = null
+    this.params = {}
     this.isLoading = false
+    this.nowSelectNode = null
   }
-
-  // ... existing code ...
 
   parseCookie(str) {
-    // ... existing code ...
+    return str.split(';').map(v => v.split('=')).reduce((acc, v) => {
+      acc[decodeURIComponent(v[0].trim())] = decodeURIComponent(v[1].trim())
+      return acc
+    }, {})
   }
-
-  getPwdId() {
+  getShareId() {
     const url = location.pathname
-    return url.match(/(?<=\/s\/)(\w+)(?=#)?/g)[0]
+    return url.match(/(?<=\/s\/)(\w+)(?=\/folder)?/g)[0]
   }
-  getStoken() {
-    const tokenStorage = JSON.parse(sessionStorage.getItem('_share_args'))
-    return tokenStorage.value.stoken ? tokenStorage.value.stoken : ''
-  }
-
   loading(type = 'start') {
     const tag = $('.' + this.config.tagClassname)
 
@@ -119,15 +117,6 @@ class QuarkPanTree {
       tag.html('&#128515;')
     }
   }
-  async handleTagClick() {
-    const $existsView = $('.tree-container')
-    if ($existsView.length > 0) {
-      return $existsView.show()
-    }
-    this.loading()
-    await this.renderView()
-    this.loading('stop')
-  }
 
   renderTag() {
     const tag = document.createElement('div')
@@ -139,9 +128,8 @@ class QuarkPanTree {
       that.handleTagClick()
     })
 
-    const insertContainer = this.config.insertContainer
-    domReady(insertContainer, function() {
-      document.querySelector(insertContainer).appendChild(tag)
+    domReady('div.banner--7Ux0y', function() {
+      document.querySelector('#root > div > div.page--W3d1U > .banner--7Ux0y').appendChild(tag)
     })
   }
 
@@ -159,7 +147,6 @@ class QuarkPanTree {
       return obj
     })
   }
-
   async buildFancytreeCfg() {
     const that = this
     const cfg = {
@@ -169,26 +156,26 @@ class QuarkPanTree {
         that.nowSelectNode = data.node
       },
     }
-    const loadRootNode = async (event, data) => {
-      const list = await this.getList({ parent_file_id: 0 })
 
+    const loadRootNode = async (event, data) => {
+      const list = await that.getList({ parent_file_id: 'root' })
       const children = await Promise.all(
-        list.map(async pItem => {
-          const cList = await this.getList({ parent_file_id: pItem.fid })
-          return cList.map(cItem => {
+        list.items.map(async pItem => {
+          const cList = await that.getList({ parent_file_id: pItem.file_id })
+          return cList.items.map(cItem => {
             return {
-              title: cItem.file_name,
-              folder: cItem.dir,
-              key: cItem.fid,
+              title: cItem.name,
+              folder: cItem.type === 'folder',
+              key: cItem.file_id,
               lazy: true,
             }
           })
         })
       )
-      return list.map(item => ({
-        title: item.file_name,
-        folder: item.dir,
-        key: item.fid,
+      return list.items.map(item => ({
+        title: item.name,
+        folder: item.type === 'folder',
+        key: item.file_id,
         expanded: true,
         lazy: true,
         children: children.flat(1),
@@ -197,11 +184,11 @@ class QuarkPanTree {
 
     const loadNode = function(event, data) {
       data.result = that.getList({ parent_file_id: data.node.key }).then(list => {
-        return list.map(item => ({
-          title: item.file_name,
-          folder: item.dir,
-          key: item.fid,
-          lazy: item.dir,
+        return list.items.map(item => ({
+          title: item.name,
+          folder: item.type === 'folder',
+          key: item.file_id,
+          lazy: item.type === 'folder',
         }))
       })
     }
@@ -214,7 +201,17 @@ class QuarkPanTree {
     }
     return cfg
   }
-
+  async handleTagClick() {
+    console.log('clicked')
+    const $existsView = $('.tree-container')
+    if ($existsView.length > 0) {
+      return $existsView.show()
+    }
+    this.loading()
+    await this.renderView()
+    this.loading('stop')
+  }
+  // 显示侧边栏
   async renderView() {
     const cfg = await this.buildFancytreeCfg()
     const $treeContainer = $(`
@@ -230,15 +227,12 @@ class QuarkPanTree {
 
     const that = this
     $(document).on('click', '.tree-container .bar .sunzehuiBtn', function() {
-      const selectedNode = that.nowSelectNode
-      if (!selectedNode || !selectedNode.folder) return alert('未选中文件夹')
-      // 文件路径 = https://pan.quark.cn/s/{pwd_id}#/list/share/{文件id}-{文件名}/{文件id}-{文件名}/
-      const pList = [...selectedNode.getParentList(), selectedNode]
-      let filePath = `https://pan.quark.cn/s/${that.getPwdId()}#/list/share/`
-
-      const link = pList.reduce((acc, cur) => {
-        return `${acc}${cur.key}-${cur.title}/`
-      }, filePath)
+      let link = null
+      const nowSelectNode = that.nowSelectNode
+      if (nowSelectNode && nowSelectNode.folder) {
+        link = `/s/${that.getShareId()}/folder/${nowSelectNode.key}`
+      }
+      if (link == null) alert('请选择文件夹')
       window.open(link, '_blank')
     })
 
@@ -246,56 +240,44 @@ class QuarkPanTree {
       $('.tree-container').hide()
     })
 
-    const insertTreeViewContainer = this.config.insertTreeViewContainer
-    domReady(insertTreeViewContainer, function() {
-      $(insertTreeViewContainer).append($treeContainer)
+    domReady('div.content--t4XI8', function() {
+      $('#root > div > div.page--W3d1U').append($treeContainer)
     })
   }
 
+  // 获取文件列表
   async getList({ parent_file_id }) {
-    let url = new URL(this.api.fileList)
-    let params = {
-      pr: 'ucpro',
-      fr: 'pc',
-      uc_param_str: '',
-      pwd_id: this.getPwdId(),
-      stoken: this.getStoken(),
-      pdir_fid: parent_file_id || 0,
-      force: 0,
-      _page: 1,
-      _size: 50,
-      _fetch_banner: 0,
-      _fetch_share: 0,
-      _fetch_total: 1,
-      _sort: 'file_type:asc,updated_at:desc',
-      __dt: 959945,
-      __t: +new Date(),
-    }
-    Object.keys(params).forEach(key => url.searchParams.append(key, params[key]))
-    const result = await fetch(url, {
+    const result = await fetch(this.api.fileList, {
       headers: this.headers,
       referrerPolicy: 'origin',
-      method: 'GET',
+      body: JSON.stringify({
+        share_id: this.share_id,
+        parent_file_id: parent_file_id || 'root',
+        limit: 100,
+        image_thumbnail_process: 'image/resize,w_160/format,jpeg',
+        image_url_process: 'image/resize,w_1920/format,jpeg',
+        video_thumbnail_process: 'video/snapshot,t_1000,f_jpg,ar_auto,w_300',
+        order_by: 'name',
+        order_direction: 'DESC',
+      }),
+      method: 'POST',
       mode: 'cors',
       credentials: 'omit',
     })
-    const resp = await result.json()
-
-    return resp.data.list
+    return await result.json()
   }
 
   async buildTree(parent_file_id) {
     const treeNode = {}
-    const list = await this.getList({ parent_file_id })
+    const root = await this.getList({ parent_file_id })
     treeNode.children = []
-    for (let i = 0; i < list.length; i++) {
+    for (let i = 0; i < root.items.length; i++) {
       let node = void 0
-      const item = list[i]
-      if (item.dir) {
-        node = await this.buildTree(item.fid)
-        node.name = item.file_name
+      if (root.items[i].type === 'folder') {
+        node = await this.buildTree(root.items[i].file_id)
+        node.name = root.items[i].name
       } else {
-        node = item
+        node = root.items[i]
       }
       treeNode.children.push(node)
     }
@@ -329,6 +311,10 @@ class QuarkPanTree {
     .btn{
       padding: 0;
       height: 30px;
+    }
+    .close-btn{
+      background: transparent;
+      border: none;
     }
     .sunzehuiBtn{
       display: inline-block;
@@ -369,9 +355,12 @@ class QuarkPanTree {
     `
     document.body.appendChild(cssElem2)
   }
-
   async init() {
     this.insertCSS()
     this.renderTag()
   }
 }
+$(async function() {
+  const aliPanTree = new AliPanTree()
+  await aliPanTree.init()
+})
